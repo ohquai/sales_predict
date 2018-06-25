@@ -441,7 +441,10 @@ class Sales_Model:
 
 if __name__ == "__main__":
     obj = Sales_Model()
+    result = {}
     for param in [[1], [2], [3], [4], [5]]:
         obj.gridsearch_params.update({'min_child_weight': param})
         auc = obj.process()
-        print("{}: {}".format(param, auc))
+        result[param] = auc
+    for key in result.keys():
+        print("{}: {}".format(key, result[key]))
