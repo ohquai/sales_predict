@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.externals import joblib
 from sklearn.model_selection import GridSearchCV
@@ -70,8 +70,8 @@ class Sales_Model:
         # mean_tpr[0] = 0.0  # 初始处为0
         roc_auc = auc(fpr, tpr)
         # 画图，只需要plt.plot(fpr,tpr),变量roc_auc只是记录auc的值，通过auc()函数能计算出来
-        plt.plot(fpr, tpr, lw=1, label='ROC fold (area = %0.2f)' % roc_auc)
-        plt.show()
+        # plt.plot(fpr, tpr, lw=1, label='ROC fold (area = %0.2f)' % roc_auc)
+        # plt.show()
 
         print('-------------- ks, auc --------------')
         print('ks: ' + str(max_value))
@@ -440,11 +440,11 @@ class Sales_Model:
 
 
 if __name__ == "__main__":
-    obj = Sales_Model()
     result = {}
     for param in [[1], [2], [3], [4], [5]]:
+        obj = Sales_Model()
         obj.gridsearch_params.update({'min_child_weight': param})
         auc = obj.process()
-        result[param] = auc
+        result[param[0]] = auc
     for key in result.keys():
         print("{}: {}".format(key, result[key]))
