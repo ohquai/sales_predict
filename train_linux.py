@@ -21,7 +21,7 @@ np.random.seed(123)
 class Sales_Model:
     def __init__(self):
         # self.path = "H:/df/zsyh/"
-        self.path = '/code/riskdata/data.4.20/xyjk/'
+        self.path = '/code/riskdata/df/'
         self.k = 5
         self.val_split = 0.3
 
