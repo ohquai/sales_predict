@@ -448,3 +448,11 @@ if __name__ == "__main__":
         result[param[0]] = auc
     for key in result.keys():
         print("{}: {}".format(key, result[key]))
+
+
+# min_child_weight
+# 1: 0.854144467415
+# 2: 0.850149240781
+# 3: 0.858364173992
+# 4: 0.854361261823
+# 5: 0.851315644148
