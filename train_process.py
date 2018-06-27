@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.externals import joblib
 from sklearn.model_selection import GridSearchCV
@@ -20,17 +20,17 @@ np.random.seed(123)
 
 class Sales_Model:
     def __init__(self):
-        # self.path = "H:/df/zsyh/"
-        self.path = "D:/DF/sales_predict/"
+        self.path = "H:/df/zsyh/"
+        # self.path = "D:/DF/sales_predict/"
         self.k = 5
         self.val_split = 0.3
 
         # params for xgboost
         self.gridsearch_params = {
             'learning_rate': [0.02],  # done
-            'n_estimators': [500],
+            'n_estimators': [1000],
             'objective': ['binary:logistic'],
-            'min_child_weight': [1],  # done
+            'min_child_weight': [3],  # done
             'max_depth': [7],  # done
             'gamma': [0],
             'max_delta_step': [0],
@@ -70,8 +70,8 @@ class Sales_Model:
         # mean_tpr[0] = 0.0  # 初始处为0
         roc_auc = auc(fpr, tpr)
         # 画图，只需要plt.plot(fpr,tpr),变量roc_auc只是记录auc的值，通过auc()函数能计算出来
-        plt.plot(fpr, tpr, lw=1, label='ROC fold (area = %0.2f)' % roc_auc)
-        plt.show()
+        # plt.plot(fpr, tpr, lw=1, label='ROC fold (area = %0.2f)' % roc_auc)
+        # plt.show()
 
         print('-------------- ks, auc --------------')
         print('ks: ' + str(max_value))
@@ -440,8 +440,28 @@ class Sales_Model:
 
 
 if __name__ == "__main__":
-    obj = Sales_Model()
-    for param in [[1], [2], [3], [4], [5]]:
-        obj.gridsearch_params.update({'min_child_weight': param})
-        auc = obj.process()
-        print("{}: {}".format(param, auc))
+    result = {}
+    for param in [[3], [0.1], [0.5]]:
+        obj = Sales_Model()
+        obj.gridsearch_params.update({'scale_pos_weight': param})
+        auc_score = obj.process()
+        result[param[0]] = auc_score
+    for key in result.keys():
+        print("{}: {}".format(key, result[key]))
+
+
+# min_child_weight
+# 1: 0.854144467415
+# 2: 0.850149240781
+# 3: 0.858364173992
+# 4: 0.854361261823
+# 5: 0.851315644148
+
+# scale_pos_weight
+# 1: 0.8518962678887341
+# 2: 0.8516489096928873
+# 3: 0.8559962096129695
+# 4: 0.854733094034559
+# 5: 0.8494546688659546
+# 0.1: 0.8515685123872588
+# 3: 0.8531317350199084
