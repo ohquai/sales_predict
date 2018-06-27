@@ -14,7 +14,7 @@ from keras.layers import Input, Dropout, Dense, concatenate, GRU, LSTM, Embeddin
 # from keras.layers import Bidirectional
 from keras.optimizers import Adam, Adadelta, Nadam
 from keras.models import Model
-np.random.seed(123)
+np.random.seed(2018)
 # [339]	validation_0-auc:0.930062	validation_1-auc:0.860385
 # [357]	validation_0-auc:0.929215	validation_1-auc:0.86141
 
@@ -28,13 +28,13 @@ class Sales_Model:
         # params for xgboost
         self.gridsearch_params = {
             'learning_rate': [0.02],  # done
-            'n_estimators': [1000],
+            'n_estimators': [437],
             'objective': ['binary:logistic'],
-            'min_child_weight': [3],  # done
-            'max_depth': [7],  # done
+            'min_child_weight': [2],  # done
+            'max_depth': [5],  # done
             'gamma': [0],
-            'max_delta_step': [0],
-            'subsample': [0.6],
+            'max_delta_step': [2],
+            'subsample': [0.5],
             'colsample_bytree': [0.7],
             'colsample_bylevel': [0.7],
             'scale_pos_weight': [1],
@@ -404,50 +404,53 @@ class Sales_Model:
         n_train = data_train.shape[0]
         split_index = np.random.permutation(n_train)
         X_train_xgb, y_train_xgb, X_valid_xgb, y_valid_xgb, X_test_xgb = self.data_prepare(data_train, test_agg, split_index, algo='xgb')
-        # X_train_rnn, y_train_rnn, X_valid_rnn, y_valid_rnn, X_test_rnn = self.data_prepare(data_train, test_agg, split_index, algo='rnn')
+        X_train_rnn, y_train_rnn, X_valid_rnn, y_valid_rnn, X_test_rnn = self.data_prepare(data_train, test_agg, split_index, algo='rnn')
 
         # 模型训练
         model_xgb = self.get_model_xgb(X_train_xgb, y_train_xgb, X_valid_xgb, y_valid_xgb)
-        # model_rnn = self.get_model_rnn(X_train_rnn, y_train_rnn, X_valid_rnn, y_valid_rnn)
+        model_rnn = self.get_model_rnn(X_train_rnn, y_train_rnn, X_valid_rnn, y_valid_rnn)
 
         # validation验证
         print("Evaluating the model on validation data...")
         valid_predict_xgb = model_xgb.predict_proba(X_valid_xgb)
         self.evaluate(y_valid_xgb, valid_predict_xgb[:, 1])
         auc = self.get_auc(y_valid_xgb, valid_predict_xgb[:, 1])
-        # valid_predict_rnn = model_rnn.predict(X_valid_rnn, batch_size=self.BATCH_SIZE)
-        # self.evaluate(y_valid_rnn[:, 1], valid_predict_rnn[:, 1])
+        valid_predict_rnn = model_rnn.predict(X_valid_rnn, batch_size=self.BATCH_SIZE)
+        self.evaluate(y_valid_rnn[:, 1], valid_predict_rnn[:, 1])
         # print(" RMSLE error:", self.rmsle(y_valid_rnn[:, 1], valid_predict_rnn[:, 1]))
 
         # 结果预测
         result_xgb = model_xgb.predict_proba(X_test_xgb)
-        # result_rnn = model_rnn.predict(X_test_rnn, batch_size=self.BATCH_SIZE, verbose=1)
+        result_rnn = model_rnn.predict(X_test_rnn, batch_size=self.BATCH_SIZE, verbose=1)
 
-        # best_rnn_prop, max_auc = self.get_propre_split(valid_predict_rnn[:, 1], valid_predict_xgb[:, 1], y_valid_xgb)
-        # print("best auc is {0}, best_rnn_prop is {1}".format(max_auc, best_rnn_prop))
+        best_rnn_prop, max_auc = self.get_propre_split(valid_predict_rnn[:, 1], valid_predict_xgb[:, 1], y_valid_xgb)
+        print("best auc is {0}, best_rnn_prop is {1}".format(max_auc, best_rnn_prop))
 
         # result = result_rnn[:, 1]
-        result = result_xgb[:, 1]
-        # result = list(map(lambda x, y: (best_rnn_prop*x + (1-best_rnn_prop)*y), list(result_rnn[:, 1]), list(result_xgb[:, 1])))
+        # result = result_xgb[:, 1]
+        result = list(map(lambda x, y: (best_rnn_prop*x + (1-best_rnn_prop)*y), list(result_rnn[:, 1]), list(result_xgb[:, 1])))
 
         # 存储结果
-        # df_result = pd.DataFrame(data=result, columns=['RST'])
-        # df_result['USRID'] = test_agg['USRID']
-        # df_result = df_result[['USRID', 'RST']]
-        # df_result.to_csv(self.path + "result.csv", encoding="utf8", sep="\t", index=False)
+        df_result = pd.DataFrame(data=result, columns=['RST'])
+        df_result['USRID'] = test_agg['USRID']
+        df_result = df_result[['USRID', 'RST']]
+        df_result.to_csv(self.path + "result.csv", encoding="utf8", sep="\t", index=False)
 
         return auc
 
 
 if __name__ == "__main__":
-    result = {}
-    for param in [[3], [0.1], [0.5]]:
-        obj = Sales_Model()
-        obj.gridsearch_params.update({'scale_pos_weight': param})
-        auc_score = obj.process()
-        result[param[0]] = auc_score
-    for key in result.keys():
-        print("{}: {}".format(key, result[key]))
+    obj = Sales_Model()
+    auc_score = obj.process()
+    print(auc_score)
+    # result = {}
+    # for param in [[3], [0.1], [0.5]]:
+    #     obj = Sales_Model()
+    #     obj.gridsearch_params.update({'scale_pos_weight': param})
+    #     auc_score = obj.process()
+    #     result[param[0]] = auc_score
+    # for key in result.keys():
+    #     print("{}: {}".format(key, result[key]))
 
 
 # min_child_weight
