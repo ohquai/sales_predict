@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.externals import joblib
 from sklearn.model_selection import GridSearchCV
@@ -14,7 +14,7 @@ from keras.layers import Input, Dropout, Dense, concatenate, GRU, LSTM, Embeddin
 # from keras.layers import Bidirectional
 from keras.optimizers import Adam, Adadelta, Nadam
 from keras.models import Model
-np.random.seed(123)
+np.random.seed(2018)
 # [339]	validation_0-auc:0.930062	validation_1-auc:0.860385
 # [357]	validation_0-auc:0.929215	validation_1-auc:0.86141
 
@@ -27,16 +27,16 @@ class Sales_Model:
 
         # params for xgboost
         self.gridsearch_params = {
-            'learning_rate': [0.02],  # done
-            'n_estimators': [500],
+            'learning_rate': [0.02],
+            'n_estimators': [700],
             'objective': ['binary:logistic'],
-            'min_child_weight': [1],  # done
-            'max_depth': [7],  # done
-            'gamma': [0],
-            'max_delta_step': [0],
-            'subsample': [0.6],
-            'colsample_bytree': [0.7],
-            'colsample_bylevel': [0.7],
+            'min_child_weight': [2],  # done
+            'max_depth': [5],  # done
+            'gamma': [0],  # done
+            'max_delta_step': [2],  # done
+            'subsample': [0.5],
+            'colsample_bytree': [0.7],  # done
+            'colsample_bylevel': [0.7],  # done
             'scale_pos_weight': [1],
         }
 
@@ -57,6 +57,8 @@ class Sales_Model:
         mean_tpr = 0.0
         mean_fpr = np.linspace(0, 1, 100)
         fpr, tpr, theadhold = roc_curve(y_true, y_pred_prob)
+        print(fpr)
+        print(tpr)
         # fpr, tpr, theadhold = roc_curve(y_true, y_pred_prob)
         size = len(tpr)
         max_value = 0
@@ -70,8 +72,8 @@ class Sales_Model:
         # mean_tpr[0] = 0.0  # 初始处为0
         roc_auc = auc(fpr, tpr)
         # 画图，只需要plt.plot(fpr,tpr),变量roc_auc只是记录auc的值，通过auc()函数能计算出来
-        plt.plot(fpr, tpr, lw=1, label='ROC fold (area = %0.2f)' % roc_auc)
-        plt.show()
+        # plt.plot(fpr, tpr, lw=1, label='ROC fold (area = %0.2f)' % roc_auc)
+        # plt.show()
 
         print('-------------- ks, auc --------------')
         print('ks: ' + str(max_value))
@@ -441,10 +443,13 @@ class Sales_Model:
 
 if __name__ == "__main__":
     obj = Sales_Model()
-    result = {}
-    for param in [[1], [2], [3], [4], [5]]:
-        obj.gridsearch_params.update({'min_child_weight': param})
-        auc = obj.process()
-        result[param] = auc
-    for key in result.keys():
-        print("{}: {}".format(key, result[key]))
+    auc_score = obj.process()
+    print(auc_score)
+    # result = {}
+    # for param in [[1], [2], [3], [4], [5]]:
+    #     obj = Sales_Model()
+    #     obj.gridsearch_params.update({'min_child_weight': param})
+    #    auc_score = obj.process()
+    #     result[param[0]] = auc_score
+    # for key in result.keys():
+    #     print("{}: {}".format(key, result[key]))
