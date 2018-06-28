@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
+from scipy.stats import pearsonr
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.externals import joblib
 from sklearn.model_selection import GridSearchCV
 from scipy import interp
 from sklearn.preprocessing import LabelEncoder
+from keras.layers.advanced_activations import LeakyReLU, PReLU
+from keras.layers.normalization import BatchNormalization
+from keras import initializers
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix, roc_curve, auc, classification_report
 import xgboost as xgb
 from keras.utils.np_utils import to_categorical
@@ -18,14 +23,15 @@ np.random.seed(2018)
 # [339]	validation_0-auc:0.930062	validation_1-auc:0.860385
 # [357]	validation_0-auc:0.929215	validation_1-auc:0.86141
 
+
 class Model:
     def __init__(self):
         # self.path = "H:/df/zsyh/"
         self.path = "D:/DF/sales_predict/"
         self.k = 5
         self.val_split = 0.3
-        self.epochs = 2
-        self.BATCH_SIZE = 128
+        self.epochs = 8
+        self.BATCH_SIZE = 32*2
 
     def read_data(self):
         train_agg = pd.read_csv(self.path + "train_agg.csv", sep="\t", encoding='utf8')
@@ -36,6 +42,10 @@ class Model:
         test_log = pd.read_csv(self.path + "test_log.csv", sep="\t", encoding='utf8')
 
         return train_agg, train_log, train_flg, test_agg, test_log
+
+    def get_auc(self, y_true, y_pred_prob):
+        fpr, tpr, theadhold = roc_curve(y_true, y_pred_prob)
+        return auc(fpr, tpr)
 
     def evaluate(self, y_true, y_pred_prob):
         """
@@ -61,8 +71,8 @@ class Model:
         # mean_tpr[0] = 0.0  # 初始处为0
         roc_auc = auc(fpr, tpr)
         # 画图，只需要plt.plot(fpr,tpr),变量roc_auc只是记录auc的值，通过auc()函数能计算出来
-        # plt.plot(fpr, tpr, lw=1, label='ROC fold (area = %0.2f)' % roc_auc)
-        # plt.show()
+        plt.plot(fpr, tpr, lw=1, label='ROC fold (area = %0.2f)' % roc_auc)
+        plt.show()
 
         # print('-------------- ks, auc --------------')
         # print('ks: ' + str(max_value))
@@ -183,6 +193,9 @@ class Model:
         return train_log, test_log
 
     def agg_plus_log_discret(self, train_agg, train_log, test_agg, test_log):
+        col_origin = train_agg.columns.tolist()
+        col_origin.extend(test_agg.columns.tolist())
+
         pivot_l1 = pd.pivot_table(train_log, index=["USRID"], columns=['EVT_L1'], values='EVT_LBL', aggfunc='count')
         pivot_l2 = pd.pivot_table(train_log, index=["USRID"], columns=['EVT_L2'], values='EVT_LBL', aggfunc='count')
         pivot_l3 = pd.pivot_table(train_log, index=["USRID"], columns=['EVT_L3'], values='EVT_LBL', aggfunc='count')
@@ -202,6 +215,16 @@ class Model:
         test_agg = pd.merge(test_agg, pivot_l1_t, how='left', on='USRID')
         test_agg = pd.merge(test_agg, pivot_l2_t, how='left', on='USRID')
         test_agg = pd.merge(test_agg, pivot_l3_t, how='left', on='USRID')
+
+        colname_update = {}
+        for col in train_agg:
+            if col not in col_origin:
+                colname_update.update({col: 'f_'+col})
+        for col in test_agg:
+            if col not in col_origin:
+                colname_update.update({col: 'f_'+col})
+        train_agg = train_agg.rename(columns=colname_update)
+        test_agg = test_agg.rename(columns=colname_update)
 
         for col in train_agg.columns:
             if col not in test_agg.columns:
@@ -227,16 +250,27 @@ class Model:
     def new_nn_model(self, X_train, lr=0.001, decay=0.0):
         # Inputs
         model = Sequential()
-        model.add(Dense(256, activation='relu', input_shape=(X_train.shape[1],)))
-        model.add(Dropout(0.2))
-        model.add(Dense(64, activation='relu'))
-        model.add(Dense(16, activation='relu'))
+        # model.add(Dense(128, activation='relu', input_shape=(X_train.shape[1],)))
+        model.add(Dense(128, input_shape=(X_train.shape[1],)))
+        # model.add(BatchNormalization())
+        model.add(Activation('relu'))
+        # model.add(PReLU())
+        # model.add(Dropout(0.2))
+        # model.add(Dense(64, activation='relu'))
+        model.add(Dense(16))
+        # model.add(BatchNormalization())
+        model.add(Activation('relu'))
+        # model.add(PReLU())
         model.add(Dense(2, activation='sigmoid'))
-
+        print(model.summary())
+        # optimizer = Nadam(lr=lr)
         optimizer = Nadam(lr=lr)
-        model.compile(loss='mse', optimizer=optimizer)
-        # model.compile(loss='binary_crossentropy', optimizer=optimizer)
+        # model.compile(loss='mse', optimizer=optimizer)
+        model.compile(loss='binary_crossentropy', optimizer=optimizer)
 
+        # model.add(BatchNormalization())
+        # model.add(PReLU())
+        # model.add(Dense(10, kernel_initializer=initializers.Orthogonal()))
         return model
 
     def fit_model(self, X_train, y_train, X_valid, y_valid):
@@ -255,14 +289,27 @@ class Model:
     def process(self):
         train_agg, train_log, train_flg, test_agg, test_log = self.read_data()
         train_log, test_log = self.log_feature_process(train_log, test_log)
-        train_agg, test_agg = self.agg_plus_log(train_agg, train_log, test_agg, test_log)
+        train_agg, test_agg = self.agg_plus_log_discret(train_agg, train_log, test_agg, test_log)
         # train_agg.head(1000).to_csv(self.path + "log_view.csv", encoding="utf8", index=False)
         data_train = pd.merge(train_agg, train_flg, how='inner', on='USRID')
 
+        data_train = data_train.fillna(-1)
+        test_agg = test_agg.fillna(-1)
+
+        col_remove = []
+        for col in data_train.columns:
+            corr, pvalue = pearsonr(data_train[col], data_train['FLAG'])
+            # print(data_train[col])
+            # print(data_train['FLAG'])
+            # print(corr)
+            if 0.05 > corr > -0.05 and col.startswith('f_'):
+                print("{0} deleted".format(col))
+                col_remove.append(col)
+        data_train.drop(col_remove, axis=1, inplace=True)
+        test_agg.drop(col_remove, axis=1, inplace=True)
+
         X_train, y_train, X_valid, y_valid, X_test = self.data_prepare(data_train, test_agg)
-        X_train = X_train.fillna(-1)
-        X_valid = X_valid.fillna(-1)
-        X_test = X_test.fillna(-1)
+
         print(X_train)
         print(y_train)
         print(X_valid)
@@ -275,6 +322,7 @@ class Model:
 
         Y_dev_preds_rnn = model.predict_proba(X_valid)
         self.evaluate(y_valid[:, 1], Y_dev_preds_rnn[:, 1])
+        auc = self.get_auc(y_valid[:, 1], Y_dev_preds_rnn[:, 1])
 
         result = model.predict_proba(X_test)
 
@@ -282,6 +330,7 @@ class Model:
         df_result['USRID'] = test_agg['USRID']
         df_result = df_result[['USRID', 'RST']]
         df_result.to_csv(self.path + "result.csv", encoding="utf8", sep="\t", index=False)
+        print("auc: {0}".format(auc))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
+from numpy.random import seed
+seed(2018)
+from tensorflow import set_random_seed
+set_random_seed(2)
 import numpy as np
+np.random.seed(2018)
 import pandas as pd
 # import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, StratifiedKFold
@@ -9,19 +14,22 @@ from scipy import interp
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix, roc_curve, auc, classification_report
 import xgboost as xgb
 from keras.utils.np_utils import to_categorical
+from keras import initializers
 from keras.preprocessing.sequence import pad_sequences
 from keras.layers import Input, Dropout, Dense, concatenate, GRU, LSTM, Embedding, Flatten, Activation
 # from keras.layers import Bidirectional
-from keras.optimizers import Adam, Adadelta, Nadam
+from keras.optimizers import Adam, Adadelta, Nadam, SGD
+from keras.layers.normalization import BatchNormalization
 from keras.models import Model
-np.random.seed(2018)
+
 # [339]	validation_0-auc:0.930062	validation_1-auc:0.860385
 # [357]	validation_0-auc:0.929215	validation_1-auc:0.86141
-
+# 0.85139
+# 0.848289537641
 class Sales_Model:
     def __init__(self):
-        self.path = "H:/df/zsyh/"
-        # self.path = "D:/DF/sales_predict/"
+        # self.path = "H:/df/zsyh/"
+        self.path = "D:/DF/sales_predict/"
         self.k = 5
         self.val_split = 0.3
 
@@ -42,7 +50,7 @@ class Sales_Model:
 
         # params for rnn
         self.BATCH_SIZE = 128 * 1
-        self.epochs = 5
+        self.epochs = 2
         self.MAX_LOG = 4399+1
         self.log_number = 40
 
@@ -168,6 +176,30 @@ class Sales_Model:
         print("finish")
         return data
 
+    def new_rnn_model2(self, X_train, lr=0.001, decay=0.0):
+        # Inputs
+        print([X_train["user_log1"].shape[1]])
+        f_col_original = Input(shape=[X_train["col_original"].shape[1]], name="col_original")
+
+        # main layers
+        main_l = Dense(128, activation='relu')(f_col_original)
+        # main_l = Dense(64, activation='relu')(main_l)
+        main_l = Dense(16, activation='relu')(main_l)
+        output = Dense(2, activation="sigmoid")(main_l)
+
+        model = Model([f_col_original], output)
+        print(model.summary())
+        # optimizer = Adam(lr=lr, decay=decay)
+        optimizer = Nadam(lr=lr)
+        # optimizer = Adadelta()
+        # optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
+        # (mean squared error loss function works as well as custom functions)
+        # model.compile(loss='mse', optimizer=optimizer)
+        # model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+        model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['binary_accuracy'])
+
+        return model
+
     def new_rnn_model(self, X_train, lr=0.001, decay=0.0):
         # Inputs
         print([X_train["user_log1"].shape[1]])
@@ -191,22 +223,26 @@ class Sales_Model:
         main_l = Dropout(0.3)(Dense(256, activation='relu')(main_l))
         main_l = Dense(16, activation='relu')(main_l)
         main_l = Dense(2, activation='sigmoid')(main_l)
+        main_l = BatchNormalization()(main_l)
 
         main_l = concatenate([main_l, f_col_original])
-        main_l = Dropout(0.3)(Dense(256, activation='relu')(main_l))
-        main_l = Dense(64, activation='relu')(main_l)
-        main_l = Dense(16, activation='relu')(main_l)
 
-        # the output layer.
+        main_l = Dense(256, activation='relu')(main_l)
+        main_l = Dense(16, activation='relu')(main_l)
         output = Dense(2, activation="sigmoid")(main_l)
+        # main_l = Dropout(0.3)(Dense(256, activation='relu')(main_l))
+        # main_l = Dense(64, activation='relu')(main_l)
+        # main_l = Dense(16, activation='relu')(main_l)
+        # output = Dense(2, activation="sigmoid")(main_l)
 
         model = Model([user_log1, user_log2, user_log3, f_col_original], output)
         print(model.summary())
-        optimizer = Adam(lr=lr, decay=decay)
-        # optimizer = Nadam(lr=lr)
+        # optimizer = Adam(lr=lr, decay=decay)
+        optimizer = Nadam(lr=lr)
         # (mean squared error loss function works as well as custom functions)
         # model.compile(loss='mse', optimizer=optimizer)
-        model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+        # model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+        model.compile(loss = 'binary_crossentropy', optimizer = optimizer, metrics = ['binary_accuracy'])
 
         return model
 
@@ -403,32 +439,33 @@ class Sales_Model:
         # 数据集的切分
         n_train = data_train.shape[0]
         split_index = np.random.permutation(n_train)
-        X_train_xgb, y_train_xgb, X_valid_xgb, y_valid_xgb, X_test_xgb = self.data_prepare(data_train, test_agg, split_index, algo='xgb')
+        # X_train_xgb, y_train_xgb, X_valid_xgb, y_valid_xgb, X_test_xgb = self.data_prepare(data_train, test_agg, split_index, algo='xgb')
         X_train_rnn, y_train_rnn, X_valid_rnn, y_valid_rnn, X_test_rnn = self.data_prepare(data_train, test_agg, split_index, algo='rnn')
 
         # 模型训练
-        model_xgb = self.get_model_xgb(X_train_xgb, y_train_xgb, X_valid_xgb, y_valid_xgb)
+        # model_xgb = self.get_model_xgb(X_train_xgb, y_train_xgb, X_valid_xgb, y_valid_xgb)
         model_rnn = self.get_model_rnn(X_train_rnn, y_train_rnn, X_valid_rnn, y_valid_rnn)
 
         # validation验证
         print("Evaluating the model on validation data...")
-        valid_predict_xgb = model_xgb.predict_proba(X_valid_xgb)
-        self.evaluate(y_valid_xgb, valid_predict_xgb[:, 1])
-        auc = self.get_auc(y_valid_xgb, valid_predict_xgb[:, 1])
+        # valid_predict_xgb = model_xgb.predict_proba(X_valid_xgb)
+        # self.evaluate(y_valid_xgb, valid_predict_xgb[:, 1])
+        # auc = self.get_auc(y_valid_xgb, valid_predict_xgb[:, 1])
         valid_predict_rnn = model_rnn.predict(X_valid_rnn, batch_size=self.BATCH_SIZE)
         self.evaluate(y_valid_rnn[:, 1], valid_predict_rnn[:, 1])
+        auc = self.get_auc(y_valid_rnn[:, 1], valid_predict_rnn[:, 1])
         # print(" RMSLE error:", self.rmsle(y_valid_rnn[:, 1], valid_predict_rnn[:, 1]))
 
         # 结果预测
-        result_xgb = model_xgb.predict_proba(X_test_xgb)
+        # result_xgb = model_xgb.predict_proba(X_test_xgb)
         result_rnn = model_rnn.predict(X_test_rnn, batch_size=self.BATCH_SIZE, verbose=1)
 
-        best_rnn_prop, max_auc = self.get_propre_split(valid_predict_rnn[:, 1], valid_predict_xgb[:, 1], y_valid_xgb)
-        print("best auc is {0}, best_rnn_prop is {1}".format(max_auc, best_rnn_prop))
+        # best_rnn_prop, max_auc = self.get_propre_split(valid_predict_rnn[:, 1], valid_predict_xgb[:, 1], y_valid_xgb)
+        # print("best auc is {0}, best_rnn_prop is {1}".format(max_auc, best_rnn_prop))
 
-        # result = result_rnn[:, 1]
+        result = result_rnn[:, 1]
         # result = result_xgb[:, 1]
-        result = list(map(lambda x, y: (best_rnn_prop*x + (1-best_rnn_prop)*y), list(result_rnn[:, 1]), list(result_xgb[:, 1])))
+        # result = list(map(lambda x, y: (best_rnn_prop*x + (1-best_rnn_prop)*y), list(result_rnn[:, 1]), list(result_xgb[:, 1])))
 
         # 存储结果
         df_result = pd.DataFrame(data=result, columns=['RST'])
