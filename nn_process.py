@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
+from pylab import *
+mpl.rcParams['font.sans-serif'] = ['SimHei']
 from scipy.stats import pearsonr
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, StratifiedKFold
@@ -17,8 +19,9 @@ from keras.utils.np_utils import to_categorical
 from keras.preprocessing.sequence import pad_sequences
 from keras.layers import Input, Dropout, Dense, concatenate, GRU, LSTM, Embedding, Flatten, Activation
 # from keras.layers import Bidirectional
-from keras.optimizers import Adam, Adadelta, Nadam
+from keras.optimizers import Adam, Adadelta, Nadam, SGD
 from keras.models import Model, Sequential
+from keras import regularizers
 np.random.seed(2018)
 # [339]	validation_0-auc:0.930062	validation_1-auc:0.860385
 # [357]	validation_0-auc:0.929215	validation_1-auc:0.86141
@@ -72,7 +75,12 @@ class Model:
         roc_auc = auc(fpr, tpr)
         # 画图，只需要plt.plot(fpr,tpr),变量roc_auc只是记录auc的值，通过auc()函数能计算出来
         plt.plot(fpr, tpr, lw=1, label='ROC fold (area = %0.2f)' % roc_auc)
-        plt.show()
+        plt.xlabel('Specificity (假阳率)')
+        plt.ylabel('Sensitivity (真阳率)')
+        plt.title('ROC curve')
+        plt.grid()
+        plt.legend()
+        # plt.show()
 
         # print('-------------- ks, auc --------------')
         # print('ks: ' + str(max_value))
@@ -251,6 +259,7 @@ class Model:
         # Inputs
         model = Sequential()
         # model.add(Dense(128, activation='relu', input_shape=(X_train.shape[1],)))
+        # model.add(Dense(128, input_shape=(X_train.shape[1],), kernel_regularizer=regularizers.l2(0.05)))
         model.add(Dense(128, input_shape=(X_train.shape[1],)))
         # model.add(BatchNormalization())
         model.add(Activation('relu'))
@@ -263,8 +272,8 @@ class Model:
         # model.add(PReLU())
         model.add(Dense(2, activation='sigmoid'))
         print(model.summary())
-        # optimizer = Nadam(lr=lr)
         optimizer = Nadam(lr=lr)
+        # optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
         # model.compile(loss='mse', optimizer=optimizer)
         model.compile(loss='binary_crossentropy', optimizer=optimizer)
 
@@ -293,20 +302,19 @@ class Model:
         # train_agg.head(1000).to_csv(self.path + "log_view.csv", encoding="utf8", index=False)
         data_train = pd.merge(train_agg, train_flg, how='inner', on='USRID')
 
-        data_train = data_train.fillna(-1)
-        test_agg = test_agg.fillna(-1)
+        # data_train = data_train.fillna(-1)
+        # test_agg = test_agg.fillna(-1)
+        data_train = data_train.fillna(0)
+        test_agg = test_agg.fillna(0)
 
-        col_remove = []
-        for col in data_train.columns:
-            corr, pvalue = pearsonr(data_train[col], data_train['FLAG'])
-            # print(data_train[col])
-            # print(data_train['FLAG'])
-            # print(corr)
-            if 0.05 > corr > -0.05 and col.startswith('f_'):
-                print("{0} deleted".format(col))
-                col_remove.append(col)
-        data_train.drop(col_remove, axis=1, inplace=True)
-        test_agg.drop(col_remove, axis=1, inplace=True)
+        # col_remove = []
+        # for col in data_train.columns:
+        #     corr, pvalue = pearsonr(data_train[col], data_train['FLAG'])
+        #     if 0.05 > corr > -0.05 and col.startswith('f_'):
+        #         print("{0} deleted".format(col))
+        #         col_remove.append(col)
+        # data_train.drop(col_remove, axis=1, inplace=True)
+        # test_agg.drop(col_remove, axis=1, inplace=True)
 
         X_train, y_train, X_valid, y_valid, X_test = self.data_prepare(data_train, test_agg)
 
@@ -322,7 +330,7 @@ class Model:
 
         Y_dev_preds_rnn = model.predict_proba(X_valid)
         self.evaluate(y_valid[:, 1], Y_dev_preds_rnn[:, 1])
-        auc = self.get_auc(y_valid[:, 1], Y_dev_preds_rnn[:, 1])
+        auc_score = self.get_auc(y_valid[:, 1], Y_dev_preds_rnn[:, 1])
 
         result = model.predict_proba(X_test)
 
@@ -330,9 +338,18 @@ class Model:
         df_result['USRID'] = test_agg['USRID']
         df_result = df_result[['USRID', 'RST']]
         df_result.to_csv(self.path + "result.csv", encoding="utf8", sep="\t", index=False)
-        print("auc: {0}".format(auc))
+        print("auc: {0}".format(auc_score))
+
+        return auc_score
 
 
 if __name__ == "__main__":
     obj = Model()
     obj.process()
+    # auc_score_dict = {}
+    # for sd in np.arange(990, 1020, 3):
+    #     np.random.seed(sd)
+    #     obj = Model()
+    #     auc_score = obj.process()
+    #     auc_score_dict.update({sd: auc_score})
+    # print(auc_score_dict)

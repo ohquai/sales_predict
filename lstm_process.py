@@ -5,8 +5,9 @@ from scipy import interp
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix, roc_curve, auc, classification_report
 from keras.utils.np_utils import to_categorical
 from keras.preprocessing.sequence import pad_sequences
-from keras.layers import Input, Dropout, Dense, concatenate, GRU, LSTM, Embedding, Flatten, Activation
+from keras.layers import Input, Dropout, Dense, concatenate, GRU, LSTM, Embedding, Flatten, Activation, Concatenate
 # from keras.layers import Bidirectional
+from keras.layers.normalization import BatchNormalization
 from keras.optimizers import Adam, Adadelta, Nadam
 from keras.models import Model, Sequential
 np.random.seed(123)
@@ -28,6 +29,7 @@ class RNNModel:
         self.epochs = 5
         self.MAX_LOG = 4399+1
         self.log_number = 40
+        self.EMB_SIZE = 50
 
     def read_data(self):
         train_agg = pd.read_csv(self.path + "train_agg.csv", sep="\t", encoding='utf8')
@@ -147,8 +149,8 @@ class RNNModel:
                 if type(element) == list:
                     list_replace.append(element)
                 else:
-                    # list_replace.append(['4399'])
-                    list_replace.append(-1)
+                    list_replace.append(['4399'])
+                    # list_replace.append(-1)
             data[col] = list_replace
         print("finish")
         return data
@@ -219,9 +221,9 @@ class RNNModel:
             # 'V3': np.array(dataset['V3']),
             # 'V4': np.array(dataset['V4']),
         }
-        X['user_log1'] = np.array(X['user_log1']).reshape((X['user_log1'].shape[0], X['user_log1'].shape[1], 1))
-        X['user_log2'] = np.array(X['user_log2']).reshape((X['user_log2'].shape[0], X['user_log2'].shape[1], 1))
-        X['user_log3'] = np.array(X['user_log3']).reshape((X['user_log3'].shape[0], X['user_log3'].shape[1], 1))
+        # X['user_log1'] = np.array(X['user_log1']).reshape((X['user_log1'].shape[0], X['user_log1'].shape[1], 1))
+        # X['user_log2'] = np.array(X['user_log2']).reshape((X['user_log2'].shape[0], X['user_log2'].shape[1], 1))
+        # X['user_log3'] = np.array(X['user_log3']).reshape((X['user_log3'].shape[0], X['user_log3'].shape[1], 1))
         return X
 
     def data_prepare(self, data_train, data_test):
@@ -247,9 +249,9 @@ class RNNModel:
         user_log3 = Input(shape=[X_train["user_log3"].shape[1]], name="user_log3")
 
         # Embeddings layers (adjust outputs to help model)
-        emb_user_log1 = Embedding(self.MAX_LOG, self.log_number)(user_log1)
-        emb_user_log2 = Embedding(self.MAX_LOG, self.log_number)(user_log2)
-        emb_user_log3 = Embedding(self.MAX_LOG, self.log_number)(user_log3)
+        emb_user_log1 = Embedding(self.MAX_LOG, self.EMB_SIZE)(user_log1)
+        emb_user_log2 = Embedding(self.MAX_LOG, self.EMB_SIZE)(user_log2)
+        emb_user_log3 = Embedding(self.MAX_LOG, self.EMB_SIZE)(user_log3)
 
         # rnn layers (GRUs are faster than LSTMs and speed is important here)
         rnn_layer1 = GRU(12)(emb_user_log1)
@@ -263,12 +265,11 @@ class RNNModel:
         main_l = concatenate([rnn_layer1, rnn_layer2, rnn_layer3])
         main_l = Dropout(0.3)(Dense(256, activation='relu')(main_l))
         main_l = Dense(16, activation='relu')(main_l)
-        main_l = Dense(2, activation='sigmoid')(main_l)
 
         # the output layer.
         output = Dense(2, activation="sigmoid")(main_l)
 
-        model = Model([user_log1, user_log2, user_log3], output)
+        model = Model(inputs=[user_log1, user_log2, user_log3], outputs=output)
         print(model.summary())
         # optimizer = Adam(lr=lr, decay=decay)
         optimizer = Nadam(lr=lr)
@@ -277,27 +278,6 @@ class RNNModel:
         model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
 
         return model
-
-    def new_rnn_model_sequence(self, X_train, lr=0.001, decay=0.0):
-        # Inputs
-        model_gru_1 = Sequential()
-        # model_gru_1.add(GRU(50, input_shape=(40, 1), return_sequences=False))
-        model_gru_1.add(GRU(12, input_shape=(X_train.shape[1], X_train.shape[2]), return_sequences=False))
-        # model_gru_2 = Sequential()
-        # model_gru_2.add(GRU(50, input_shape=(40, 1), return_sequences=False))
-        # model_gru_3 = Sequential()
-        # model_gru_3.add(GRU(50, input_shape=(40, 1), return_sequences=False))
-
-        model_gru_1.add(Dense(128))
-        model_gru_1.add(Activation('relu'))
-        model_gru_1.add(Dense(16))
-        model_gru_1.add(Activation('relu'))
-        model_gru_1.add(Dense(2, activation='sigmoid'))
-        print(model_gru_1.summary())
-        optimizer = Nadam(lr=lr)
-        model_gru_1.compile(loss='binary_crossentropy', optimizer=optimizer)
-
-        return model_gru_1
 
     def process(self):
         # 读取数据
@@ -313,8 +293,8 @@ class RNNModel:
 
         # train_agg = train_agg[train_agg['EVT_L1'] != ['4399']]
         # test_agg = test_agg[train_agg['EVT_L1'] != ['4399']]
-        train_agg = train_agg[train_agg['EVT_L1'] != -1]
-        test_agg = test_agg[test_agg['EVT_L1'] != -1]
+        # train_agg = train_agg[train_agg['EVT_L1'] != -1]
+        # test_agg = test_agg[test_agg['EVT_L1'] != -1]
 
         data_train = pd.merge(train_agg, train_flg, how='inner', on='USRID')
         data_train.head(1000).to_csv(self.path + "sample_with_flag.csv", encoding="utf8", index=False)
@@ -329,21 +309,27 @@ class RNNModel:
         lr_decay = exp_decay(lr_init, lr_fin, steps)
 
         # Create model and fit it with training dataset.
-        print(X_train['user_log3'].shape[1])
-        print(X_train['user_log3'].shape[2])
-        print(X_train['user_log3'])
-        rnn_model = self.new_rnn_model_sequence(X_train['user_log3'], lr=lr_init, decay=lr_decay)
-        rnn_model.fit(X_train['user_log3'], y_train, epochs=self.epochs, batch_size=self.BATCH_SIZE, validation_data=(X_valid['user_log3'], y_valid), verbose=1)
+        # print(X_train['user_log3'].shape[1])
+        # print(X_train['user_log3'].shape[2])
+        # print(X_train['user_log3'])
+        rnn_model = self.new_rnn_model(X_train, lr=lr_init, decay=lr_decay)
+        # rnn_model = self.new_rnn_model_sequence(X_train['user_log3'], lr=lr_init, decay=lr_decay)
+        # rnn_model_log1 = self.new_rnn_model_sequence1(X_train['user_log1'])
+        # rnn_model_log2 = self.new_rnn_model_sequence1(X_train['user_log2'])
+        # rnn_model_log3 = self.new_rnn_model_sequence1(X_train['user_log3'])
+        # rnn_model = self.new_rnn_model_sequence2(rnn_model_log1, rnn_model_log2, rnn_model_log3, lr=lr_init, decay=lr_decay)
+
+        rnn_model.fit(X_train, y_train, epochs=self.epochs, batch_size=self.BATCH_SIZE, validation_data=(X_valid, y_valid), verbose=1)
 
         print("Evaluating the model on validation data...")
-        Y_dev_preds_rnn = rnn_model.predict(X_valid['user_log3'], batch_size=self.BATCH_SIZE)
+        Y_dev_preds_rnn = rnn_model.predict(X_valid, batch_size=self.BATCH_SIZE)
         self.evaluate(y_valid[:, 1], Y_dev_preds_rnn[:, 1])
         auc_score = self.get_auc(y_valid[:, 1], Y_dev_preds_rnn[:, 1])
 
         # print(" RMSLE error:", self.rmsle(y_valid[:, 1], Y_dev_preds_rnn[:, 1]))
         # print(Y_dev_preds_rnn)
 
-        result = rnn_model.predict(X_test['user_log3'], batch_size=self.BATCH_SIZE, verbose=1)
+        result = rnn_model.predict(X_test, batch_size=self.BATCH_SIZE, verbose=1)
         # result = np.expm1(result)
         print(result)
         # df_result = pd.DataFrame(data=result[:, 1], columns=['RST'])
